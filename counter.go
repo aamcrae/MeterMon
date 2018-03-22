@@ -27,6 +27,7 @@ func Counter(c chan Reading, interval int, fd *os.File) {
         time.Sleep(togo)
         reading.count = atomic.SwapInt32(&counter, 0)
         reading.interval = int(time.Now().Sub(now).Round(time.Second).Seconds())
+        c <- reading
     }
 }
 
@@ -35,8 +36,8 @@ func countPulses(fd *os.File, counter *int32) {
         var b [1]byte
         _, err := fd.Read(b[:])
         if (err != nil) {
-            fmt.Printf("Error reading from file, %v", err)
-            return
+            fmt.Fprintf(os.Stderr, "Error reading from file, %v\n", err)
+            os.Exit(1)
         }
         atomic.AddInt32(counter, 1)
     }
