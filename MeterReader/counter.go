@@ -17,7 +17,7 @@ type Accum struct {
 
 // Counter accumulates the event counts during the intervals, and
 // sends the accumlated counts down a channel.
-func Counter(c chan Accum, interval int, files []*os.File) {
+func Counter(c <-chan Accum, interval int, files []*os.File) {
     counters := make([]int32, len(files))
     for i, f := range files {
         go countPulses(f, &counters[i])
