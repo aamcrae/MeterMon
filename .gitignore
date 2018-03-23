@@ -3,6 +3,7 @@
 *.dll
 *.so
 *.dylib
+MeterReader/MeterReader
 
 # Test binary, build with `go test -c`
 *.test
