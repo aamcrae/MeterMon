@@ -19,6 +19,9 @@ type Client struct {
     vals []Accum
 }
 
+// clientMsg is the structure that gets sent back to the producer
+// when the client worker has sent a message (or detects that the
+// client connection has closed).
 type clientMsg struct {
     client *Client
     done bool
@@ -39,22 +42,25 @@ func Updater(l net.Listener, c <-chan Accum) {
             newClient, err := l.Accept()
             if err == nil {
                 acceptor <- newClient
-            } else {
+            } else if ! *quiet {
                 fmt.Fprintf(os.Stderr, "Accept err: %v\n", err)
             }
         }
     }()
+    // Main select loop.
     for {
         select {
         case newVal := <- c:
+            // New counter values.
+            // Append to to the values to be sent to the clients.
             recs[next] = newVal
             next = (next + 1) % *maxRecords
-            // Append this new value to the values to be sent to the clients.
             for _, c := range clients {
                 c.vals = append(c.vals, newVal)
                 sendToClient(c)
             }
         case newConn := <- acceptor:
+            // New client connection.
             if (!*quiet) {
                 fmt.Fprintf(os.Stderr, "New connection accepted from %v\n",
                         newConn.RemoteAddr())
@@ -62,18 +68,21 @@ func Updater(l net.Listener, c <-chan Accum) {
             client := new(Client)
             client.send = make(chan []Accum, MsgWindow)
             clients[client] = client
-            // Copy over the existing data.
+            // Initially send the existing data.
             client.vals = append(client.vals, recs[next:]...)
             if next != 0 {
                 client.vals = append(client.vals, recs[:next]...)
             }
             sendToClient(client)
-            go updateClient(client, clientChan, newConn)
+            go clientWorker(client, clientChan, newConn)
         case msg := <- clientChan:
+            // Message from the client workers.
             if msg.done {
+                // Client has disconnected.
                 if (!*quiet) {
                     fmt.Fprintf(os.Stderr, "Closing connection\n")
                 }
+                close(msg.client.send)
                 delete(clients, msg.client)
             } else {
                 // Client has sent data, more can be sent.
@@ -96,9 +105,9 @@ func sendToClient(client *Client) {
     }
 }
 
-// updateClient reads slices of Accum, formats them, and sends
+// clientWorker reads slices of Accum, formats them, and sends
 // the text output to the client as space separated values.
-func updateClient(client *Client, msgChan chan<- clientMsg, conn net.Conn) {
+func clientWorker(client *Client, msgChan chan<- clientMsg, conn net.Conn) {
     defer conn.Close()
     for {
         for ac := range client.send {
