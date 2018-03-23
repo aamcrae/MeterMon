@@ -10,13 +10,19 @@ import (
 
 const (
     Deadline = time.Minute * 5
+    MsgWindow = 5
 )
 
 // Client holds context about each client that is connected.
 type Client struct {
     send chan []Accum
-    done chan struct{}
     vals []Accum
+    window int
+}
+
+type clientMsg struct {
+    client *Client
+    done bool
 }
 
 // Updater accepts new connections and updates the clients with
@@ -26,7 +32,8 @@ func Updater(l net.Listener, c <-chan Accum) {
     // Circular buffer containing records.
     recs := make ([]Accum, *maxRecords)
     next := 0
-    var clients []*Client
+    clients := make(map[*Client]*Client)
+    clientChan := make(chan clientMsg, 100)
     acceptor := make(chan net.Conn)
     go func() {
         for {
@@ -38,102 +45,67 @@ func Updater(l net.Listener, c <-chan Accum) {
             }
         }
     }()
-    dataToSend := false
     for {
-        // There are 2 separate selects for when there is pending
-        // data to be sent to clients, or not.
-        if (dataToSend) {
-            select {
-            case newVal := <- c:
-                next = newValue(recs, next, newVal, clients)
-            case newConn := <- acceptor:
-                clients = append(clients, newClient(newConn, recs, next))
-            default:
-                time.Sleep(time.Second)
-            }
-        } else {
-            select {
-            case newVal := <- c:
-                next = newValue(recs, next, newVal, clients)
-            case newConn := <- acceptor:
-                clients = append(clients, newClient(newConn, recs, next))
-            }
-        clients, dataToSend = clientUpdates(clients)
-        }
-    }
-}
-
-func newValue(recs []Accum, next int, val Accum, clients []*Client) int {
-    recs[next] = val
-    next = (next + 1) % *maxRecords
-    // Append this new value to the values to be sent to the clients.
-    for _, c := range clients {
-        c.vals = append(c.vals, val)
-    }
-    return next
-}
-
-func newClient(newConn net.Conn, recs []Accum, next int) *Client {
-    if (!*quiet) {
-      fmt.Fprintf(os.Stderr, "New connection accepted from %v\n",
-                  newConn.RemoteAddr())
-    }
-    client := new(Client)
-    client.send = make(chan []Accum, 10)
-    client.done = make(chan struct {}, 1)
-    // Copy over the existing data.
-    client.vals = append(client.vals, recs[next:]...)
-    if next != 0 {
-        client.vals = append(client.vals, recs[:next]...)
-    }
-    go updateClient(client.send, client.done, newConn)
-    return client
-}
-
-func clientUpdates(clients []*Client) ([]*Client, bool) {
-    dataToSend := false
-    // Check for any closed clients.
-    for i := 0; i < len(clients); i++ {
         select {
-        case <-clients[i].done:
-            // Client has timed out or closed, shut down and remove.
-            close(clients[i].send)
-            // Move last element to replace current element.
-            if i != len(clients)-1 {
-                clients[i] = clients[len(clients)-1]
+        case newVal := <- c:
+            recs[next] = newVal
+            next = (next + 1) % *maxRecords
+            // Append this new value to the values to be sent to the clients.
+            for _, c := range clients {
+                c.vals = append(c.vals, newVal)
+                sendToClient(c)
             }
-            // Nil out the last element to avoid memory leaks,
-            // and trim off the last element.
-            clients[len(clients)-1] = nil
-            clients = clients[:len(clients)-1]
-            // Since the current element was removed, decrement the
-            // index counter so that the element replacing it is accessed.
-            i--
-        default:
+        case newConn := <- acceptor:
+            if (!*quiet) {
+                fmt.Fprintf(os.Stderr, "New connection accepted from %v\n",
+                        newConn.RemoteAddr())
+            }
+            client := new(Client)
+            client.send = make(chan []Accum, MsgWindow)
+            client.window = MsgWindow
+            clients[client] = client
+            // Copy over the existing data.
+            client.vals = append(client.vals, recs[next:]...)
+            if next != 0 {
+                client.vals = append(client.vals, recs[:next]...)
+            }
+            sendToClient(client)
+            go updateClient(client, clientChan, newConn)
+        case msg := <- clientChan:
+            if msg.done {
+                if (!*quiet) {
+                    fmt.Fprintf(os.Stderr, "Closing connection\n")
+                }
+                delete(clients, msg.client)
+            } else {
+                // Client has sent data, more can be sent.
+                msg.client.window++
+                sendToClient(msg.client)
+            }
         }
     }
-    // Check for any data to send.
-    for _, c := range clients {
-        if len(c.vals) != 0 {
-            select {
-            case c.send <- c.vals:
-                // Data sent, so remove the values.
-                c.vals = []Accum{}
-            default:
-                dataToSend = true
-            }
-        }
+}
+
+// If there is room to send data, and there is data to be sent,
+// send it to the client.
+func sendToClient(client *Client) {
+    if *verbose {
+        fmt.Fprintf(os.Stderr, "Sending to client %d vals, window %d\n",
+                    len(client.vals), client.window)
     }
-    return clients, dataToSend
+    if len(client.vals) != 0 && client.window > 0 {
+        client.window--
+        client.send <- client.vals
+        client.vals = []Accum{}
+    }
 }
 
 // updateClient reads slices of Accum, formats them, and sends
 // the text output to the client as space separated values.
-func updateClient(input <-chan []Accum, done chan<- struct{}, conn net.Conn) {
+func updateClient(client *Client, msgChan chan<- clientMsg, conn net.Conn) {
     defer conn.Close()
-    defer close(done)
     for {
-        for ac := range input {
+        for ac := range client.send {
             for _, val := range ac {
                 // Skip uninitialised values.
                 if val.interval != 0 {
@@ -142,10 +114,12 @@ func updateClient(input <-chan []Accum, done chan<- struct{}, conn net.Conn) {
                         if (!*quiet) {
                             fmt.Fprintf(os.Stderr, "Closing client: %v\n", err)
                         }
+                        msgChan <- clientMsg{client, true}
                         return
                     }
                 }
             }
+            msgChan <- clientMsg{client, false}
         }
     }
 }
