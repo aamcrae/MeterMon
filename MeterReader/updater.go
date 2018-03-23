@@ -39,35 +39,51 @@ func Updater(l net.Listener, c <-chan Accum) {
     }()
     dataToSend := false
     for {
-        select {
-        case newVal := <- c:
-            recs[next] = newVal
-            next = (next + 1) % MaxRecords
-            // Append this new value to the values to be sent to the clients.
-            for _, c := range clients {
-                c.vals = append(c.vals, newVal)
-            }
-        case newConn := <- acceptor:
-            fmt.Fprintf(os.Stderr, "New connection accepted\n")
-            newClient := new(Client)
-            newClient.send = make(chan []Accum, 10)
-            newClient.done = make(chan struct {}, 1)
-            // Copy over the existing data.
-            newClient.vals = append(newClient.vals, recs[next:]...)
-            if next != 0 {
-                newClient.vals = append(newClient.vals, recs[:next]...)
-            }
-            clients = append(clients, newClient)
-            go updateClient(newClient.send, newClient.done, newConn)
-        default:
-            if (dataToSend) {
-                time.Sleep(time.Second)
-            } else {
+        // There are 2 separate selects for when there is pending
+        // data to be sent to clients, or not.
+        if (dataToSend) {
+            select {
+            case newVal := <- c:
+                next = newValue(recs, next, newVal, clients)
+            case newConn := <- acceptor:
+                clients = append(clients, newClient(newConn, recs, next))
+            default:
                 time.Sleep(time.Second)
             }
-        }
+        } else {
+            select {
+            case newVal := <- c:
+                next = newValue(recs, next, newVal, clients)
+            case newConn := <- acceptor:
+                clients = append(clients, newClient(newConn, recs, next))
+            }
         clients, dataToSend = clientUpdates(clients)
+        }
     }
+}
+
+func newValue(recs []Accum, next int, val Accum, clients []*Client) int {
+    recs[next] = val
+    next = (next + 1) % MaxRecords
+    // Append this new value to the values to be sent to the clients.
+    for _, c := range clients {
+        c.vals = append(c.vals, val)
+    }
+    return next
+}
+
+func newClient(newConn net.Conn, recs []Accum, next int) *Client {
+    fmt.Fprintf(os.Stderr, "New connection accepted\n")
+    client := new(Client)
+    client.send = make(chan []Accum, 10)
+    client.done = make(chan struct {}, 1)
+    // Copy over the existing data.
+    client.vals = append(client.vals, recs[next:]...)
+    if next != 0 {
+        client.vals = append(client.vals, recs[:next]...)
+    }
+    go updateClient(client.send, client.done, newConn)
+    return client
 }
 
 func clientUpdates(clients []*Client) ([]*Client, bool) {
