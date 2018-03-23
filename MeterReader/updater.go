@@ -17,7 +17,6 @@ const (
 type Client struct {
     send chan []Accum
     vals []Accum
-    window int
 }
 
 type clientMsg struct {
@@ -62,7 +61,6 @@ func Updater(l net.Listener, c <-chan Accum) {
             }
             client := new(Client)
             client.send = make(chan []Accum, MsgWindow)
-            client.window = MsgWindow
             clients[client] = client
             // Copy over the existing data.
             client.vals = append(client.vals, recs[next:]...)
@@ -79,7 +77,6 @@ func Updater(l net.Listener, c <-chan Accum) {
                 delete(clients, msg.client)
             } else {
                 // Client has sent data, more can be sent.
-                msg.client.window++
                 sendToClient(msg.client)
             }
         }
@@ -91,10 +88,9 @@ func Updater(l net.Listener, c <-chan Accum) {
 func sendToClient(client *Client) {
     if *verbose {
         fmt.Fprintf(os.Stderr, "Sending to client %d vals, window %d\n",
-                    len(client.vals), client.window)
+                    len(client.vals), cap(client.send) - len(client.send))
     }
-    if len(client.vals) != 0 && client.window > 0 {
-        client.window--
+    if len(client.vals) != 0 && len(client.send) < cap(client.send) {
         client.send <- client.vals
         client.vals = []Accum{}
     }
