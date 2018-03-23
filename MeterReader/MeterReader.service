@@ -6,6 +6,7 @@ After=network.target
 User=root
 Type=forking
 TimeoutStopSec=10
+Nice=-10
 ExecStart=/usr/local/bin/MeterReader  -q --gpio GPIO2,GPIO3
 
 Restart=on-failure
