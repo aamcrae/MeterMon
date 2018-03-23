@@ -15,13 +15,11 @@ type Accum struct {
     counts []int32
 }
 
+var counters []int32
+
 // Counter accumulates the event counts during the intervals, and
 // sends the accumlated counts down a channel.
-func Counter(c chan<- Accum, interval int, files []*os.File) {
-    counters := make([]int32, len(files))
-    for i, f := range files {
-        go countPulses(f, &counters[i])
-    }
+func Counter(c chan<- Accum, interval int) {
     intv := time.Duration(interval) * time.Second  // Interval as duration.
     for {
         var reading Accum
@@ -41,21 +39,35 @@ func Counter(c chan<- Accum, interval int, files []*os.File) {
         for i, _ := range counters {
             reading.counts[i] = atomic.SwapInt32(&counters[i], 0)
         }
-        fmt.Println("counts = ", reading.counts)
+        if *verbose {
+            fmt.Println("Start:", reading.start, "Interval:", reading.interval,
+                        "counts = ", reading.counts)
+        }
         c <- reading
     }
 }
 
-// countPulses reads a file, and increments a counter for each
-// byte that is read.
-func countPulses(fd *os.File, counter *int32) {
-    for {
-        var b [1]byte
-        _, err := fd.Read(b[:])
-        if (err != nil) {
-            fmt.Fprintf(os.Stderr, "Error reading from file, %v\n", err)
-            os.Exit(1)
-        }
+func addCounter() func() {
+    counters = append(counters, 0)
+    counter := &counters[len(counters)-1]
+    return func() {
         atomic.AddInt32(counter, 1)
     }
+}
+
+// countFile reads a file, and increments a counter for each
+// byte that is read.
+func countFile(fd *os.File) {
+    count := addCounter()
+    go func() {
+        for {
+            var b [1]byte
+            _, err := fd.Read(b[:])
+            if (err != nil) {
+                fmt.Fprintf(os.Stderr, "Error reading from file, %v\n", err)
+                os.Exit(1)
+            }
+            count()
+        }
+    }()
 }

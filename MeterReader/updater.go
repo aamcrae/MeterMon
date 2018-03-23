@@ -1,6 +1,7 @@
 package main
 
 import (
+    "bytes"
     "fmt"
     "net"
     "os"
@@ -23,7 +24,7 @@ type Client struct {
 // all available data is sent.
 func Updater(l net.Listener, c <-chan Accum) {
     // Circular buffer containing records.
-    recs := make ([]Accum, MaxRecords)
+    recs := make ([]Accum, *maxRecords)
     next := 0
     var clients []*Client
     acceptor := make(chan net.Conn)
@@ -64,7 +65,7 @@ func Updater(l net.Listener, c <-chan Accum) {
 
 func newValue(recs []Accum, next int, val Accum, clients []*Client) int {
     recs[next] = val
-    next = (next + 1) % MaxRecords
+    next = (next + 1) % *maxRecords
     // Append this new value to the values to be sent to the clients.
     for _, c := range clients {
         c.vals = append(c.vals, val)
@@ -73,7 +74,10 @@ func newValue(recs []Accum, next int, val Accum, clients []*Client) int {
 }
 
 func newClient(newConn net.Conn, recs []Accum, next int) *Client {
-    fmt.Fprintf(os.Stderr, "New connection accepted\n")
+    if (!*quiet) {
+      fmt.Fprintf(os.Stderr, "New connection accepted from %v\n",
+                  newConn.RemoteAddr())
+    }
     client := new(Client)
     client.send = make(chan []Accum, 10)
     client.done = make(chan struct {}, 1)
@@ -135,7 +139,9 @@ func updateClient(input <-chan []Accum, done chan<- struct{}, conn net.Conn) {
                 if val.interval != 0 {
                     conn.SetWriteDeadline(time.Now().Add(Deadline))
                     if err := writeClient(val, conn); err != nil {
-                        fmt.Fprintf(os.Stderr, "Closing client: %v\n", err)
+                        if (!*quiet) {
+                            fmt.Fprintf(os.Stderr, "Closing client: %v\n", err)
+                        }
                         return
                     }
                 }
@@ -146,16 +152,15 @@ func updateClient(input <-chan []Accum, done chan<- struct{}, conn net.Conn) {
 
 // writeClient sends one line of output to the client.
 func writeClient(ac Accum, conn net.Conn) error {
-    if _, err := fmt.Fprintf(conn, "%d %d", ac.start.Unix(), ac.interval); err != nil {
-        return err
-    }
+    var buf bytes.Buffer
+    fmt.Fprintf(&buf, "%d %d", ac.start.Unix(), ac.interval)
     for _, v := range ac.counts {
-        if _, err := fmt.Fprintf(conn, " %d", v); err != nil {
-            return err
-        }
+        fmt.Fprintf(&buf, " %d", v)
     }
-    if _, err := fmt.Fprintf(conn, "\n"); err != nil {
-        return err
+    buf.WriteString("\n")
+    if *verbose {
+        fmt.Fprintf(os.Stderr, "Sending to %v: %s", conn.RemoteAddr(), buf.String())
     }
-    return nil
+    _, err := conn.Write(buf.Bytes())
+    return err
 }
