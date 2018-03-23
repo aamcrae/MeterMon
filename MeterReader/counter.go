@@ -2,7 +2,6 @@ package main
 
 import (
     "fmt"
-    "os"
     "sync/atomic"
     "time"
 )
@@ -53,21 +52,4 @@ func addCounter() func() {
     return func() {
         atomic.AddInt32(counter, 1)
     }
-}
-
-// countFile reads a file, and increments a counter for each
-// byte that is read.
-func countFile(fd *os.File) {
-    count := addCounter()
-    go func() {
-        for {
-            var b [1]byte
-            _, err := fd.Read(b[:])
-            if (err != nil) {
-                fmt.Fprintf(os.Stderr, "Error reading from file, %v\n", err)
-                os.Exit(1)
-            }
-            count()
-        }
-    }()
 }
