@@ -1,0 +1,16 @@
+[Unit]
+Description=MeterReader daemon
+After=network.target
+
+[Service]
+User=root
+Type=forking
+TimeoutStopSec=10
+ExecStart=/usr/local/bin/MeterReader  -q --gpio GPIO2,GPIO3
+
+Restart=on-failure
+RestartSec=42s
+SuccessExitStatus=SIGKILL
+
+[Install]
+WantedBy=default.target

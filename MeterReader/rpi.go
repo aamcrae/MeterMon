@@ -34,13 +34,14 @@ func gpioCounters(pins string) {
                 fmt.Fprintf(os.Stderr, "Error opening pin %s! %s\n", s, err)
                 defer os.Exit(1)
             }
-            err = pin.BeginWatch(gpio.EdgeRising, addCounter())
+            count, index := addCounter()
+            err = pin.BeginWatch(gpio.EdgeRising, count)
             if err != nil {
                 fmt.Fprintf(os.Stderr, "Unable to watch pin %s! %s\n", s, err)
                 defer os.Exit(1)
             }
             if *verbose {
-                fmt.Printf("Now watching pin %s\n", s)
+                fmt.Printf("Now watching pin %s on counter %d\n", s, index)
             }
         } else {
             fmt.Fprintf(os.Stderr, "Unknown pin: %s\n", s)
