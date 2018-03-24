@@ -110,36 +110,30 @@ func sendToClient(client *Client) {
 func clientWorker(client *Client, msgChan chan<- clientMsg, conn net.Conn) {
     defer conn.Close()
     for {
-        for ac := range client.send {
-            for _, val := range ac {
-                // Skip uninitialised values.
-                if val.interval != 0 {
-                    conn.SetWriteDeadline(time.Now().Add(Deadline))
-                    if err := writeClient(val, conn); err != nil {
-                        if (!*quiet) {
-                            fmt.Fprintf(os.Stderr, "Closing client: %v\n", err)
-                        }
-                        msgChan <- clientMsg{client, true}
-                        return
+        ac := <- client.send
+        for _, val := range ac {
+            // Skip uninitialised values.
+            if val.interval != 0 {
+                var buf bytes.Buffer
+                fmt.Fprintf(&buf, "%d %d", val.start.Unix(), val.interval)
+                for _, v := range val.counts {
+                    fmt.Fprintf(&buf, " %d", v)
+                }
+                buf.WriteString("\n")
+                if *verbose {
+                    fmt.Fprintf(os.Stderr, "Sending to %v: %s", conn.RemoteAddr(), buf.String())
+                }
+                conn.SetWriteDeadline(time.Now().Add(Deadline))
+                if _, err := conn.Write(buf.Bytes()); err != nil {
+                    if (!*quiet) {
+                        fmt.Fprintf(os.Stderr, "Closing client: %v\n", err)
                     }
+                    msgChan <- clientMsg{client, true}
+                    return
                 }
             }
-            msgChan <- clientMsg{client, false}
         }
+        // Send a message indicating the data has been successfully sent.
+        msgChan <- clientMsg{client, false}
     }
-}
-
-// writeClient sends one line of output to the client.
-func writeClient(ac Accum, conn net.Conn) error {
-    var buf bytes.Buffer
-    fmt.Fprintf(&buf, "%d %d", ac.start.Unix(), ac.interval)
-    for _, v := range ac.counts {
-        fmt.Fprintf(&buf, " %d", v)
-    }
-    buf.WriteString("\n")
-    if *verbose {
-        fmt.Fprintf(os.Stderr, "Sending to %v: %s", conn.RemoteAddr(), buf.String())
-    }
-    _, err := conn.Write(buf.Bytes())
-    return err
 }
