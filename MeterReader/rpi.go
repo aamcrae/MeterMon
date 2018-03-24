@@ -2,34 +2,26 @@ package main
 
 import (
     "github.com/davecheney/gpio"
+    "github.com/davecheney/gpio/rpi"
     "fmt"
     "os"
     "strings"
 )
 
 var gpioMap = map[string]int{
-    "GPIO0": gpio.GPIO0,
-    "GPIO1": gpio.GPIO1,
-    "GPIO2": gpio.GPIO2,
-    "GPIO3": gpio.GPIO3,
-    "GPIO4": gpio.GPIO4,
-    "GPIO7": gpio.GPIO7,
-    "GPIO8": gpio.GPIO8,
-    "GPIO9": gpio.GPIO9,
-    "GPIO10": gpio.GPIO10,
-    "GPIO11": gpio.GPIO11,
-    "GPIO17": gpio.GPIO17,
-    "GPIO18": gpio.GPIO18,
-    "GPIO22": gpio.GPIO22,
-    "GPIO23": gpio.GPIO23,
-    "GPIO24": gpio.GPIO24,
-    "GPIO25": gpio.GPIO25,
+    "GPIO17": rpi.GPIO17,
+    "GPIO21": rpi.GPIO21,
+    "GPIO22": rpi.GPIO22,
+    "GPIO23": rpi.GPIO23,
+    "GPIO24": rpi.GPIO24,
+    "GPIO25": rpi.GPIO25,
+    "GPIO27": rpi.GPIO27,
 }
 
 func gpioCounters(pins string) {
     for _, s := range strings.Split(pins, ",") {
         if pnum, ok := gpioMap[strings.ToUpper(s)]; ok {
-            pin, err := gpio.OpenPin(pnum, gpio.ModeInput)
+            pin, err := rpi.OpenPin(pnum, gpio.ModeInput)
             if err != nil {
                 fmt.Fprintf(os.Stderr, "Error opening pin %s! %s\n", s, err)
                 defer os.Exit(1)
