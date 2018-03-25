@@ -1,6 +1,7 @@
 package main
 
 import (
+    "flag"
     "github.com/davecheney/gpio"
     "github.com/davecheney/gpio/rpi"
     "log"
@@ -9,9 +10,10 @@ import (
 )
 
 const (
-  PollTime = 20
-  Debounce = 100
+  PollTime = 10
 )
+
+var debounce = flag.Int("debounce", 100, "Debounce in milliseconds")
 
 var gpioMap = map[string]int{
     "GPIO17": rpi.GPIO17,
@@ -42,22 +44,21 @@ func pinWatch(s string) {
     if *verbose {
         log.Printf("Now watching pin %s on counter %d\n", s, index)
     }
-    deb := time.Duration(Debounce) * time.Millisecond
+    deb := time.Duration(*debounce) * time.Millisecond
     pollDuration := time.Duration(PollTime) * time.Millisecond
-    last := pin.Get()
-    current := last
-    lastRead := time.Now()
+    lastSample := pin.Get()
+    heldState := lastSample
+    lastChange := time.Now()
     for {
         time.Sleep(pollDuration)
         p := pin.Get()
         now := time.Now()
-        if p != last {
-            last = p
-            if now.Sub(lastRead) < deb {
-               continue
-            }
+        if p != lastSample {
+            lastSample = p
+            lastChange = now
+            continue
         }
-        if p != current {
+        if p != heldState && now.Sub(lastChange) >= deb {
             // Signal has been stable for debounce period.
             // Call counter on rising edge
             if p {
@@ -66,7 +67,7 @@ func pinWatch(s string) {
             if *verbose {
                 log.Printf("pin %s now %v\n", s, p)
             }
-            current = p
+            heldState = p
         }
     }
 }
