@@ -3,9 +3,14 @@ package main
 import (
     "github.com/davecheney/gpio"
     "github.com/davecheney/gpio/rpi"
-    "fmt"
-    "os"
+    "log"
     "strings"
+    "time"
+)
+
+const (
+  PollTime = 20
+  Debounce = 100
 )
 
 var gpioMap = map[string]int{
@@ -20,24 +25,48 @@ var gpioMap = map[string]int{
 
 func gpioCounters(pins string) {
     for _, s := range strings.Split(pins, ",") {
-        if pnum, ok := gpioMap[strings.ToUpper(s)]; ok {
-            pin, err := rpi.OpenPin(pnum, gpio.ModeInput)
-            if err != nil {
-                fmt.Fprintf(os.Stderr, "Error opening pin %s! %s\n", s, err)
-                defer os.Exit(1)
+        go pinWatch(s)
+    }
+}
+
+func pinWatch(s string) {
+    pnum, ok := gpioMap[strings.ToUpper(s)]
+    if !ok {
+        log.Fatalf("Unknown pin: %s\n", s)
+    }
+    pin, err := rpi.OpenPin(pnum, gpio.ModeInput)
+    if err != nil {
+        log.Fatalf("Error opening pin %s! %v", s, err)
+    }
+    count, index := addCounter()
+    if *verbose {
+        log.Printf("Now watching pin %s on counter %d\n", s, index)
+    }
+    deb := time.Duration(Debounce) * time.Millisecond
+    pollDuration := time.Duration(PollTime) * time.Millisecond
+    last := pin.Get()
+    current := last
+    lastRead := time.Now()
+    for {
+        time.Sleep(pollDuration)
+        p := pin.Get()
+        now := time.Now()
+        if p != last {
+            last = p
+            if now.Sub(lastRead) < deb {
+               continue
             }
-            count, index := addCounter()
-            err = pin.BeginWatch(gpio.EdgeRising, count)
-            if err != nil {
-                fmt.Fprintf(os.Stderr, "Unable to watch pin %s! %s\n", s, err)
-                defer os.Exit(1)
+        }
+        if p != current {
+            // Signal has been stable for debounce period.
+            // Call counter on rising edge
+            if p {
+                count()
             }
             if *verbose {
-                fmt.Printf("Now watching pin %s on counter %d\n", s, index)
+                log.Printf("pin %s now %v\n", s, p)
             }
-        } else {
-            fmt.Fprintf(os.Stderr, "Unknown pin: %s\n", s)
-            defer os.Exit(1)
+            current = p
         }
     }
 }
