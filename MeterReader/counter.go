@@ -1,8 +1,7 @@
 package main
 
 import (
-    "fmt"
-    "os"
+    "log"
     "sync/atomic"
     "time"
 )
@@ -45,10 +44,10 @@ func Counter(c chan<- Accum, interval int) {
             reading.counts[i] = atomic.SwapInt64(&counters[i], 0)
         }
         if *verbose {
-            fmt.Println("Start:", reading.start, "Interval:", reading.interval,
+           log.Println("Start:", reading.start, "Interval:", reading.interval,
                         "counts = ", reading.counts)
         }
-        c <- reading
+        c <-reading
     }
 }
 
@@ -56,8 +55,7 @@ func Counter(c chan<- Accum, interval int) {
 func addCounter() (func(), int) {
     index := atomic.AddInt32(&counterIndex, 1) - 1
     if index >= maxCounters {
-        fmt.Fprintf(os.Stderr, "Maximum number of counters exceeded!\n")
-        os.Exit(1)
+        log.Fatalf("Maximum number of counters exceeded!\n")
     }
     counter := &counters[index]
     return func() {

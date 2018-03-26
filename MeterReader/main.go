@@ -2,7 +2,7 @@ package main
 
 import (
     "flag"
-    "fmt"
+    "log"
     "net"
     "os"
     "strings"
@@ -32,13 +32,11 @@ func main() {
     os.Remove(*unixSocket)
     addr, err := net.ResolveUnixAddr("unix", *unixSocket)
     if err != nil {
-        fmt.Printf("Can't resolve %s: %v", *unixSocket, err)
-        os.Exit(1)
+        log.Fatalf("Can't resolve %s: %v", *unixSocket, err)
     }
     l, err := net.ListenUnix("unix", addr)
     if err != nil {
-        fmt.Printf("Can't listen on %s: %v", *unixSocket, err)
-        os.Exit(1)
+        log.Fatalf("Can't listen on %s: %v", *unixSocket, err)
     }
     ch := make(chan Accum, 50)
     go Counter(ch, *interval)
@@ -49,28 +47,27 @@ func main() {
 func fileCount(files string) {
     for _, s := range strings.Split(files, ",") {
         if *verbose {
-            fmt.Fprintf(os.Stderr, "Opening %s\n", s)
+            log.Printf("Opening %s", s)
         }
         f, err := os.Open(s)
         if err != nil {
-            fmt.Fprintf(os.Stderr, "Error opening %s: %v\n", s, err)
+            log.Printf("Error opening %s: %v", s, err)
             continue
         }
         count, index := addCounter()
         go func() {
             if *verbose {
-                fmt.Printf("Listening on %s (counter %d) for events\n",
+                log.Printf("Listening on %s (counter %d) for events",
                             s, index)
             }
             for {
                 var b [1]byte
                 _, err := f.Read(b[:])
                 if (err != nil) {
-                    fmt.Fprintf(os.Stderr, "Read error on %s: %v\n", s, err)
-                    os.Exit(1)
+                    log.Fatalf("Read error on %s: %v", s, err)
                 }
                 if *verbose {
-                    fmt.Printf("Event on %s for counter %d\n", s, index)
+                    log.Printf("Event on %s for counter %d", s, index)
                 }
                 count()
             }

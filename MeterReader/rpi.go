@@ -27,23 +27,23 @@ var gpioMap = map[string]int{
 
 func gpioCounters(pins string) {
     for _, s := range strings.Split(pins, ",") {
-        go pinWatch(s)
+        pnum, ok := gpioMap[strings.ToUpper(s)]
+        if !ok {
+            log.Fatalf("Unknown pin: %s\n", s)
+        }
+        pin, err := rpi.OpenPin(pnum, gpio.ModeInput)
+        if err != nil {
+            log.Fatalf("Error opening pin %s! %v", s, err)
+        }
+        count, index := addCounter()
+        if *verbose {
+            log.Printf("Now watching pin %s on counter %d\n", s, index)
+        }
+        go pinWatch(s, pin, count)
     }
 }
 
-func pinWatch(s string) {
-    pnum, ok := gpioMap[strings.ToUpper(s)]
-    if !ok {
-        log.Fatalf("Unknown pin: %s\n", s)
-    }
-    pin, err := rpi.OpenPin(pnum, gpio.ModeInput)
-    if err != nil {
-        log.Fatalf("Error opening pin %s! %v", s, err)
-    }
-    count, index := addCounter()
-    if *verbose {
-        log.Printf("Now watching pin %s on counter %d\n", s, index)
-    }
+func pinWatch(s string, pin gpio.Pin, count func()) {
     deb := time.Duration(*debounce) * time.Millisecond
     pollDuration := time.Duration(PollTime) * time.Millisecond
     lastSample := pin.Get()

@@ -3,14 +3,14 @@ package main
 import (
     "bytes"
     "fmt"
+    "log"
     "net"
-    "os"
     "time"
 )
 
 const (
-    Deadline = time.Minute * 5
-    MsgWindow = 5
+    deadline = time.Minute * 5
+    msgWindow = 5
 )
 
 // Client holds context about each client that is connected.
@@ -43,30 +43,30 @@ func Updater(l net.Listener, c <-chan Accum) {
             if err == nil {
                 acceptor <- newClient
             } else if ! *quiet {
-                fmt.Fprintf(os.Stderr, "Accept err: %v\n", err)
+                log.Printf("Accept err: %v\n", err)
             }
         }
     }()
     // Main select loop.
     for {
         select {
-        case newVal := <- c:
+        case newVal := <-c:
             // New counter values.
-            // Append to to the values to be sent to the clients.
+            // Append to the data to be sent to the clients.
             recs[next] = newVal
             next = (next + 1) % *maxRecords
             for c, _ := range clients {
                 c.vals = append(c.vals, newVal)
                 sendToClient(c)
             }
-        case newConn := <- acceptor:
+        case newConn := <-acceptor:
             // New client connection.
             if (!*quiet) {
-                fmt.Fprintf(os.Stderr, "New connection accepted from %v\n",
+                log.Printf("New connection accepted from %v\n",
                         newConn.RemoteAddr())
             }
             client := new(Client)
-            client.send = make(chan []Accum, MsgWindow)
+            client.send = make(chan []Accum, msgWindow)
             clients[client] = struct{}{}
             // Initially send the existing data.
             client.vals = append(client.vals, recs[next:]...)
@@ -75,12 +75,12 @@ func Updater(l net.Listener, c <-chan Accum) {
             }
             sendToClient(client)
             go clientWorker(client, clientChan, newConn)
-        case msg := <- clientChan:
+        case msg := <-clientChan:
             // Message from the client workers.
             if msg.done {
                 // Client has disconnected.
                 if (!*quiet) {
-                    fmt.Fprintf(os.Stderr, "Closing connection\n")
+                    log.Printf("Closing connection\n")
                 }
                 close(msg.client.send)
                 delete(clients, msg.client)
@@ -96,7 +96,7 @@ func Updater(l net.Listener, c <-chan Accum) {
 // send it to the client.
 func sendToClient(client *Client) {
     if *verbose {
-        fmt.Fprintf(os.Stderr, "Sending to client %d vals, window %d\n",
+        log.Printf("Sending to client %d vals, window %d\n",
                     len(client.vals), cap(client.send) - len(client.send))
     }
     if len(client.vals) != 0 && len(client.send) < cap(client.send) {
@@ -110,7 +110,7 @@ func sendToClient(client *Client) {
 func clientWorker(client *Client, msgChan chan<- clientMsg, conn net.Conn) {
     defer conn.Close()
     for {
-        ac := <- client.send
+        ac := <-client.send
         for _, val := range ac {
             // Skip uninitialised values.
             if val.interval != 0 {
@@ -121,12 +121,12 @@ func clientWorker(client *Client, msgChan chan<- clientMsg, conn net.Conn) {
                 }
                 buf.WriteString("\n")
                 if *verbose {
-                    fmt.Fprintf(os.Stderr, "Sending to %v: %s", conn.RemoteAddr(), buf.String())
+                    log.Printf("Sending to %v: %s", conn.RemoteAddr(), buf.String())
                 }
-                conn.SetWriteDeadline(time.Now().Add(Deadline))
+                conn.SetWriteDeadline(time.Now().Add(deadline))
                 if _, err := conn.Write(buf.Bytes()); err != nil {
                     if (!*quiet) {
-                        fmt.Fprintf(os.Stderr, "Closing client: %v\n", err)
+                        log.Printf("Closing client: %v\n", err)
                     }
                     msgChan <- clientMsg{client, true}
                     return
