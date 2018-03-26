@@ -34,7 +34,7 @@ func Updater(l net.Listener, c <-chan Accum) {
     // Circular buffer containing records.
     recs := make ([]Accum, *maxRecords)
     next := 0
-    clients := make(map[*Client]*Client)
+    clients := make(map[*Client]struct{})
     clientChan := make(chan clientMsg, 100)
     acceptor := make(chan net.Conn)
     go func() {
@@ -55,7 +55,7 @@ func Updater(l net.Listener, c <-chan Accum) {
             // Append to to the values to be sent to the clients.
             recs[next] = newVal
             next = (next + 1) % *maxRecords
-            for _, c := range clients {
+            for c, _ := range clients {
                 c.vals = append(c.vals, newVal)
                 sendToClient(c)
             }
@@ -67,7 +67,7 @@ func Updater(l net.Listener, c <-chan Accum) {
             }
             client := new(Client)
             client.send = make(chan []Accum, MsgWindow)
-            clients[client] = client
+            clients[client] = struct{}{}
             // Initially send the existing data.
             client.vals = append(client.vals, recs[next:]...)
             if next != 0 {
