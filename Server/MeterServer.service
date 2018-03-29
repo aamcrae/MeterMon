@@ -1,13 +1,12 @@
 [Unit]
 Description=MeterReader daemon
-After=network.target
+After=MeterReader.service
 
 [Service]
 User=root
-Type=forking
+Type=simple
 TimeoutStopSec=10
-Nice=-10
-ExecStart=/usr/local/bin/MeterReader  -q --gpio GPIO2,GPIO3
+ExecStart=/usr/local/bin/MeterServer -q
 
 Restart=on-failure
 RestartSec=42s
