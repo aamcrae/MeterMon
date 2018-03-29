@@ -5,6 +5,7 @@
 *.dylib
 MeterReader/MeterReader
 Server/Server
+PVUpload/PVUpload
 
 # Test binary, build with `go test -c`
 *.test

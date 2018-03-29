@@ -10,7 +10,7 @@ import (
 )
 
 var poll = flag.Int("poll", 5, "Poll time in milliseconds")
-var debounce = flag.Int("debounce", 40, "Debounce in milliseconds")
+var debounce = flag.Int("debounce", 25, "Debounce in milliseconds")
 
 var gpioMap = map[string]int{
     "GPIO17": rpi.GPIO17,
