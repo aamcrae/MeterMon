@@ -9,11 +9,8 @@ import (
     "time"
 )
 
-const (
-  PollTime = 10
-)
-
-var debounce = flag.Int("debounce", 100, "Debounce in milliseconds")
+var poll = flag.Int("poll", 5, "Poll time in milliseconds")
+var debounce = flag.Int("debounce", 40, "Debounce in milliseconds")
 
 var gpioMap = map[string]int{
     "GPIO17": rpi.GPIO17,
@@ -45,7 +42,7 @@ func gpioCounters(pins string) {
 
 func pinWatch(s string, pin gpio.Pin, count func()) {
     deb := time.Duration(*debounce) * time.Millisecond
-    pollDuration := time.Duration(PollTime) * time.Millisecond
+    pollDuration := time.Duration(*poll) * time.Millisecond
     lastSample := pin.Get()
     heldState := lastSample
     lastChange := time.Now()
