@@ -4,10 +4,10 @@ After=network.target
 
 [Service]
 User=root
-Type=forking
+Type=simple
 TimeoutStopSec=10
 Nice=-10
-ExecStart=/usr/local/bin/MeterReader  -q --gpio GPIO2,GPIO3
+ExecStart=/usr/local/bin/MeterReader  -q --gpio GPIO17 --interval 60
 
 Restart=on-failure
 RestartSec=42s

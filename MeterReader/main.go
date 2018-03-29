@@ -10,8 +10,8 @@ import (
 
 var gpioPins = flag.String("gpio", "", "GPIO pins to watch")
 var fileCounters = flag.String("files", "", "Files to open and read")
-var interval = flag.Int("interval", 300, "Interval in seconds")
-var maxRecords = flag.Int("maxrecords", 2880, "Maximum number of records")
+var interval = flag.Int("interval", 60, "Interval in seconds")
+var maxRecords = flag.Int("maxrecords", 24 * 60, "Maximum number of records")
 var unixSocket = flag.String("socket", "/tmp/readmeter",
                              "Name of UNIX domain socket")
 var verbose = flag.Bool("v", false, "Verbose output for debugging")
